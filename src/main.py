@@ -18,10 +18,37 @@ def load_images(folder):
     return images, filenames
 
 
+# ---------------- DILATION ----------------
+def dilate(binary):
+    rows, cols = binary.shape
+    output = np.zeros_like(binary)
+
+    for i in range(1, rows - 1):
+        for j in range(1, cols - 1):
+            if np.any(binary[i-1:i+2, j-1:j+2] == 255):
+                output[i, j] = 255
+
+    return output
+
+
+# ---------------- EROSION ----------------
+def erode(binary):
+    rows, cols = binary.shape
+    output = np.zeros_like(binary)
+
+    for i in range(1, rows - 1):
+        for j in range(1, cols - 1):
+            if np.all(binary[i-1:i+2, j-1:j+2] == 255):
+                output[i, j] = 255
+
+    return output
+
+
 def main():
 
-    image_folder = "Orings"
-    output_folder = "outputs"
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    image_folder = os.path.join(base_dir, "Orings")
+    output_folder = os.path.join(base_dir, "outputs")
 
     images, filenames = load_images(image_folder)
 
@@ -29,46 +56,49 @@ def main():
 
         start_time = time.time()
 
-        #GRAYSCALE
+        # ---------- GRAYSCALE ----------
         gray = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
 
-        for i in range(img.shape[0]):
-            for j in range(img.shape[1]):
-                b = img[i, j, 0]
-                g = img[i, j, 1]
-                r = img[i, j, 2]
-                gray[i, j] = int((int(r) + int(g) + int(b)) / 3)
+        for x in range(0, img.shape[0]):
+            for y in range(0, img.shape[1]):
+                b = img[x, y, 0]
+                g = img[x, y, 1]
+                r = img[x, y, 2]
+                gray[x, y] = int((int(r) + int(g) + int(b)) / 3)
 
-        # HISTOGRAM 
+        # ---------- HISTOGRAM ----------
         hist = np.zeros(256)
 
-        for i in range(gray.shape[0]):
-            for j in range(gray.shape[1]):
-                intensity = gray[i, j]
-                hist[intensity] += 1
+        for x in range(0, gray.shape[0]):
+            for y in range(0, gray.shape[1]):
+                hist[gray[x, y]] += 1
 
-        #AUTOMATIC THRESHOLD (Two-Peak Method)
+        # ---------- AUTOMATIC THRESHOLD ----------
         peak1 = np.argmax(hist[:128])
         peak2 = np.argmax(hist[128:]) + 128
         threshold = int((peak1 + peak2) / 2)
 
-        #APPLY THRESHOLD
+        # ---------- THRESHOLD ----------
         binary = np.zeros_like(gray)
 
-        for i in range(gray.shape[0]):
-            for j in range(gray.shape[1]):
-                if gray[i, j] > threshold:
-                    binary[i, j] = 255
+        for x in range(0, gray.shape[0]):
+            for y in range(0, gray.shape[1]):
+                if gray[x, y] > threshold:
+                    binary[x, y] = 255
                 else:
-                    binary[i, j] = 0
+                    binary[x, y] = 0
 
-        
+        # ---------- MORPHOLOGICAL CLOSING ----------
+        binary = dilate(binary)
+        binary = erode(binary)
+
+        # Save binary result
         cv2.imwrite(os.path.join(output_folder, "binary_" + filename), binary)
-
-        result = "THRESHOLD DONE"
 
         end_time = time.time()
         processing_time = end_time - start_time
+
+        result = "THRESHOLD + CLOSING"
 
         cv2.putText(img,
                     f"{result} | {processing_time:.4f}s",
@@ -78,8 +108,7 @@ def main():
                     (0, 0, 255),
                     2)
 
-        save_path = os.path.join(output_folder, filename)
-        cv2.imwrite(save_path, img)
+        cv2.imwrite(os.path.join(output_folder, filename), img)
 
         print("Processed:", filename)
 
