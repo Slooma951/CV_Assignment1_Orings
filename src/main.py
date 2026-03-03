@@ -44,6 +44,44 @@ def erode(binary):
     return output
 
 
+# ---------------- CONNECTED COMPONENTS ----------------
+def connected_components(binary):
+
+    rows, cols = binary.shape
+    labels = np.zeros((rows, cols), dtype=np.int32)
+    label = 1
+    areas = {}
+
+    for i in range(rows):
+        for j in range(cols):
+
+            if binary[i, j] == 255 and labels[i, j] == 0:
+
+                stack = [(i, j)]
+                area = 0
+
+                while stack:
+                    x, y = stack.pop()
+
+                    if (0 <= x < rows and
+                        0 <= y < cols and
+                        binary[x, y] == 255 and
+                        labels[x, y] == 0):
+
+                        labels[x, y] = label
+                        area += 1
+
+                        stack.append((x+1, y))
+                        stack.append((x-1, y))
+                        stack.append((x, y+1))
+                        stack.append((x, y-1))
+
+                areas[label] = area
+                label += 1
+
+    return labels, areas
+
+
 def main():
 
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,8 +97,8 @@ def main():
         # ---------- GRAYSCALE ----------
         gray = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
 
-        for x in range(0, img.shape[0]):
-            for y in range(0, img.shape[1]):
+        for x in range(img.shape[0]):
+            for y in range(img.shape[1]):
                 b = img[x, y, 0]
                 g = img[x, y, 1]
                 r = img[x, y, 2]
@@ -69,11 +107,10 @@ def main():
         # ---------- HISTOGRAM ----------
         hist = np.zeros(256)
 
-        for x in range(0, gray.shape[0]):
-            for y in range(0, gray.shape[1]):
+        for x in range(gray.shape[0]):
+            for y in range(gray.shape[1]):
                 hist[gray[x, y]] += 1
 
-        # ---------- AUTOMATIC THRESHOLD ----------
         peak1 = np.argmax(hist[:128])
         peak2 = np.argmax(hist[128:]) + 128
         threshold = int((peak1 + peak2) / 2)
@@ -81,8 +118,8 @@ def main():
         # ---------- THRESHOLD ----------
         binary = np.zeros_like(gray)
 
-        for x in range(0, gray.shape[0]):
-            for y in range(0, gray.shape[1]):
+        for x in range(gray.shape[0]):
+            for y in range(gray.shape[1]):
                 if gray[x, y] > threshold:
                     binary[x, y] = 255
                 else:
@@ -92,13 +129,40 @@ def main():
         binary = dilate(binary)
         binary = erode(binary)
 
-        # Save binary result
+        # ---------- CONNECTED COMPONENTS ----------
+        labels, areas = connected_components(binary)
+
+        if len(areas) == 0:
+            result = "FAIL"
+        else:
+            largest_label = max(areas, key=areas.get)
+
+            ring_mask = np.zeros_like(binary)
+
+            for i in range(binary.shape[0]):
+                for j in range(binary.shape[1]):
+                    if labels[i, j] == largest_label:
+                        ring_mask[i, j] = 255
+
+            binary = ring_mask
+
+            ring_area = areas[largest_label]
+
+            # ---------- PASS / FAIL CLASSIFICATION ----------
+            # Determine acceptable area range manually after observing good samples
+            MIN_AREA = 1500
+            MAX_AREA = 5000
+
+            if ring_area < MIN_AREA or ring_area > MAX_AREA:
+                result = "FAIL"
+            else:
+                result = "PASS"
+
+        # Save final mask
         cv2.imwrite(os.path.join(output_folder, "binary_" + filename), binary)
 
         end_time = time.time()
         processing_time = end_time - start_time
-
-        result = "THRESHOLD + CLOSING"
 
         cv2.putText(img,
                     f"{result} | {processing_time:.4f}s",
