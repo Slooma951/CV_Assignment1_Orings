@@ -132,33 +132,19 @@ def main():
         # ---------- CONNECTED COMPONENTS ----------
         labels, areas = connected_components(binary)
 
+        # ---------- PASS / FAIL CLASSIFICATION ----------
         if len(areas) == 0:
             result = "FAIL"
         else:
-            largest_label = max(areas, key=areas.get)
+            sorted_areas = sorted(areas.values(), reverse=True)
 
-            ring_mask = np.zeros_like(binary)
-
-            for i in range(binary.shape[0]):
-                for j in range(binary.shape[1]):
-                    if labels[i, j] == largest_label:
-                        ring_mask[i, j] = 255
-
-            binary = ring_mask
-
-            ring_area = areas[largest_label]
-
-            # ---------- PASS / FAIL CLASSIFICATION ----------
-            # Determine acceptable area range manually after observing good samples
-            MIN_AREA = 1500
-            MAX_AREA = 5000
-
-            if ring_area < MIN_AREA or ring_area > MAX_AREA:
+            # If there is a second significant blob, it is defective
+            if len(sorted_areas) > 1 and sorted_areas[1] > 200:
                 result = "FAIL"
             else:
                 result = "PASS"
 
-        # Save final mask
+        # Save binary image
         cv2.imwrite(os.path.join(output_folder, "binary_" + filename), binary)
 
         end_time = time.time()
