@@ -4,6 +4,7 @@ import os
 import time
 
 
+# ---------------- LOAD IMAGES ----------------
 def load_images(folder):
     images = []
     filenames = []
@@ -44,7 +45,7 @@ def erode(binary):
     return output
 
 
-# ---------------- CONNECTED COMPONENTS ----------------
+# ---------------- CONNECTED COMPONENT LABELLING ----------------
 def connected_components(binary):
 
     rows, cols = binary.shape
@@ -82,6 +83,45 @@ def connected_components(binary):
     return labels, areas
 
 
+# ---------------- COUNT HOLES ----------------
+def count_holes(binary):
+
+    rows, cols = binary.shape
+
+    # Invert mask
+    inverted = np.zeros_like(binary)
+
+    for i in range(rows):
+        for j in range(cols):
+            if binary[i, j] == 0:
+                inverted[i, j] = 255
+            else:
+                inverted[i, j] = 0
+
+    labels, areas = connected_components(inverted)
+
+    hole_count = 0
+
+    for label in areas:
+
+        touches_border = False
+
+        # Check if region touches image border (background region)
+        for i in range(rows):
+            if labels[i, 0] == label or labels[i, cols-1] == label:
+                touches_border = True
+
+        for j in range(cols):
+            if labels[0, j] == label or labels[rows-1, j] == label:
+                touches_border = True
+
+        if not touches_border:
+            hole_count += 1
+
+    return hole_count
+
+
+# ---------------- MAIN ----------------
 def main():
 
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -99,10 +139,10 @@ def main():
 
         for x in range(img.shape[0]):
             for y in range(img.shape[1]):
-                b = img[x, y, 0]
-                g = img[x, y, 1]
-                r = img[x, y, 2]
-                gray[x, y] = int((int(r) + int(g) + int(b)) / 3)
+                b = int(img[x, y, 0])
+                g = int(img[x, y, 1])
+                r = int(img[x, y, 2])
+                gray[x, y] = int((r + g + b) / 3)
 
         # ---------- HISTOGRAM ----------
         hist = np.zeros(256)
@@ -120,7 +160,7 @@ def main():
 
         for x in range(gray.shape[0]):
             for y in range(gray.shape[1]):
-                if gray[x, y] > threshold:
+                if gray[x, y] < threshold:   # O-ring is darker
                     binary[x, y] = 255
                 else:
                     binary[x, y] = 0
@@ -132,19 +172,29 @@ def main():
         # ---------- CONNECTED COMPONENTS ----------
         labels, areas = connected_components(binary)
 
-        # ---------- PASS / FAIL CLASSIFICATION ----------
         if len(areas) == 0:
             result = "FAIL"
         else:
-            sorted_areas = sorted(areas.values(), reverse=True)
+            largest_label = max(areas, key=areas.get)
 
-            # If there is a second significant blob, it is defective
-            if len(sorted_areas) > 1 and sorted_areas[1] > 200:
-                result = "FAIL"
-            else:
+            ring_mask = np.zeros_like(binary)
+
+            for i in range(binary.shape[0]):
+                for j in range(binary.shape[1]):
+                    if labels[i, j] == largest_label:
+                        ring_mask[i, j] = 255
+
+            binary = ring_mask
+
+            # ---------- HOLE ANALYSIS ----------
+            holes = count_holes(binary)
+
+            if holes == 1:
                 result = "PASS"
+            else:
+                result = "FAIL"
 
-        # Save binary image
+        # ---------- SAVE OUTPUT ----------
         cv2.imwrite(os.path.join(output_folder, "binary_" + filename), binary)
 
         end_time = time.time()
